@@ -14,13 +14,17 @@
 # [생성 파일]
 # · data/holidays-YYYY.json  — 해당 연도 공휴일 목록
 # · data/lunar-YYYY-MM.json  — 해당 월 음력 데이터
+# · data/posts.json          — 게시글 발행일 (날짜별 그룹, 박제 누적)
+#
+# [posts.json 동작]
+# 사이트맵에서 글 번호 목록을 얻고, archive에 없는 글만 페이지를
+# 직접 열어 <meta article:published_time>에서 발행일을 추출합니다.
+# 발행일은 변하지 않으므로 한 번 수집된 글은 재수집하지 않습니다
+# (첫 실행은 전체 ~180건, 이후엔 신규 글만 — 가볍게 누적).
 # ════════════════════════════════════════════════════════════
 
 name: Update Calendar Data
 
-permissions:
-  contents: write
-  
 on:
   # 매월 1일 자정(UTC 15:00 = KST 00:00) 자동 실행
   schedule:
@@ -42,9 +46,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          
+
       - name: Set up date variables
         id: date
         run: |
@@ -188,14 +190,137 @@ jobs:
           print(f'음력 {len(lunar_data)}일 저장 완료')
           PYEOF
 
+      - name: Fetch post publish dates
+        run: |
+          echo "게시글 발행일 수집 중 (sitemap + 페이지 메타태그)"
+
+          python3 << 'PYEOF'
+          import urllib.request
+          import json
+          import re
+          import os
+          import time
+          import datetime
+
+          BLOG = 'https://mjcoffeescience.tistory.com'
+          ARCHIVE_FILE = 'data/posts.json'
+          UA = 'Mozilla/5.0 (compatible; mjcafe-calendar-bot/1.0)'
+
+          def fetch(url, timeout=15):
+              req = urllib.request.Request(url, headers={'User-Agent': UA})
+              with urllib.request.urlopen(req, timeout=timeout) as res:
+                  return res.read().decode('utf-8', errors='replace')
+
+          # 1) 기존 archive 로드 (있으면 이미 박제된 글은 재수집 안 함)
+          posts = {}
+          if os.path.exists(ARCHIVE_FILE):
+              try:
+                  with open(ARCHIVE_FILE, encoding='utf-8') as f:
+                      posts = json.load(f).get('posts', {})
+                  print(f'기존 archive 로드: {len(posts)}건')
+              except Exception as e:
+                  print(f'archive 로드 실패(무시): {e}')
+
+          # posts는 {글번호(str): {date,title,url}} 형태로 메모리에서 관리 후
+          # 마지막에 날짜별 그룹으로 변환
+          # 기존 archive가 날짜별 그룹이면 글번호 맵으로 역변환
+          if posts and all(k.isdigit() and len(k) == 8 for k in posts):
+              flat = {}
+              for ymd, arr in posts.items():
+                  for p in arr:
+                      flat[str(p['n'])] = {'date': ymd, 'title': p.get('t', ''), 'url': p['u']}
+              posts = flat
+              print(f'  → 글번호 맵으로 역변환: {len(posts)}건')
+
+          # 2) 사이트맵에서 현재 존재하는 글번호 목록 추출
+          sitemap = fetch(f'{BLOG}/sitemap.xml')
+          nums = re.findall(rf'{re.escape(BLOG)}/(\d+)</loc>', sitemap)
+          nums = sorted(set(int(n) for n in nums))
+          print(f'사이트맵 글 번호: {len(nums)}개 ({min(nums)}~{max(nums)})')
+
+          # 3) archive에 없는 번호만 페이지 fetch → 발행일+제목 추출
+          PUB_RE = re.compile(
+              r'<meta[^>]+property=["\']article:published_time["\'][^>]+content=["\']([^"\']+)["\']')
+          OG_TITLE_RE = re.compile(
+              r'<meta[^>]+property=["\']og:title["\'][^>]+content=["\']([^"\']+)["\']')
+
+          new_count = 0
+          fail = []
+          for n in nums:
+              key = str(n)
+              if key in posts and posts[key].get('date'):
+                  continue  # 이미 박제됨 — 발행일은 안 바뀌므로 skip
+              url = f'{BLOG}/{n}'
+              try:
+                  html = fetch(url)
+                  m = PUB_RE.search(html)
+                  if not m:
+                      fail.append(n)
+                      continue
+                  iso = m.group(1)          # 2024-12-19T15:13:01+09:00
+                  ymd = iso[:10].replace('-', '')  # 20241219
+                  tm = OG_TITLE_RE.search(html)
+                  title = tm.group(1).strip() if tm else ''
+                  posts[key] = {'date': ymd, 'title': title, 'url': url}
+                  new_count += 1
+                  if new_count % 20 == 0:
+                      print(f'  ... {new_count}건 수집')
+                  time.sleep(0.3)  # 서버 배려
+              except Exception as e:
+                  fail.append(n)
+
+          print(f'신규 수집: {new_count}건, 실패: {len(fail)}건')
+          if fail:
+              print(f'  실패 번호: {fail[:30]}{" ..." if len(fail)>30 else ""}')
+
+          # 4) 날짜별 그룹으로 변환 → posts.json 저장
+          by_date = {}
+          for key, p in posts.items():
+              ymd = p['date']
+              entry = {'n': int(key), 'u': p['url']}
+              if p.get('title'):
+                  entry['t'] = p['title']
+              by_date.setdefault(ymd, []).append(entry)
+          # 같은 날 여러 글이면 글번호 내림차순(최신 먼저)
+          for ymd in by_date:
+              by_date[ymd].sort(key=lambda e: e['n'], reverse=True)
+
+          result = {
+              '_meta': {
+                  'source': 'tistory page <meta article:published_time>',
+                  'total': len(posts),
+                  'updated': datetime.datetime.utcnow().isoformat() + 'Z'
+              },
+              'posts': dict(sorted(by_date.items()))
+          }
+          with open(ARCHIVE_FILE, 'w', encoding='utf-8') as f:
+              json.dump(result, f, ensure_ascii=False, indent=2)
+          print(f'posts.json 저장 완료: 총 {len(posts)}건, {len(by_date)}일')
+          PYEOF
+
       - name: Commit and push
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/
+
+          Y="${{ steps.date.outputs.year }}"
+          M="${{ steps.date.outputs.month }}"
+
+          # 공휴일·음력 (매월 갱신분)
+          git add data/holidays-*.json data/lunar-*.json
           if git diff --staged --quiet; then
-            echo "변경사항 없음 — 커밋 생략"
+            echo "공휴일·음력 변경 없음"
           else
-            git commit -m "chore: update calendar data ${{ steps.date.outputs.year }}-${{ steps.date.outputs.month }}"
-            git push
+            git commit -m "chore(calendar): update holidays/lunar ${Y}-${M}"
           fi
+
+          # 게시글 발행일 (신규 글 있을 때만)
+          git add data/posts.json
+          if git diff --staged --quiet; then
+            echo "게시글 변경 없음"
+          else
+            git commit -m "chore(calendar): update post publish dates"
+          fi
+
+          # 둘 중 하나라도 커밋됐으면 push
+          git push || echo "push할 변경 없음"
