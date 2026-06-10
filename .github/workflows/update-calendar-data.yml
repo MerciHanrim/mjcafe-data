@@ -25,6 +25,9 @@
 
 name: Update Calendar Data
 
+permissions:
+  contents: write
+
 on:
   # 매월 1일 자정(UTC 15:00 = KST 00:00) 자동 실행
   schedule:
