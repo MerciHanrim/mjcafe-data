@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<!--
+  ════════════════════════════════════════════════════════════
+  MJ Coffee Science — Today's Aphorism Editor
+  작성: Hanrim (Cozy Shelter)
+  [개요]
+  mjcafe 블로그 사이드바 "Today's Aphorism" 위젯의
+  격언 데이터(mj-aphorism.json)를 편집하는 도구입니다.
+  [주요 기능]
+  1. 격언 추가 / 수정 / 삭제
+  2. 순서 변경: 드래그 앤 드롭 / 번호 직접 입력
+  3. mode 전환 (auto: 날짜 자동 순환 / manual: 첫 번째 항목 고정)
+  4. JSON 미리보기 + 복사
+  5. JSON 다운로드 → GitHub 업로드
+  6. JSON Import (기존 파일 불러오기)
+  7. localStorage 자동 저장
+  [사용 방법]
+  1. 격언 편집 완료 후 "Download JSON" 클릭
+  2. 다운로드된 mj-aphorism.json을
+     GitHub MerciHanrim/mjcafe-data 저장소에 업로드
+  [디자인]
+  MJ Coffee Science 블로그 팔레트:
+  크림(#faf6f0) · 커피 브라운(#6b4226) · 에스프레소(#3b1f0e)
+  라떼 골드(#c4956a) · 미스트 베이지(#e8ddd0)
+  폰트: Playfair Display (세리프) + Lato (산세리프)
+  ════════════════════════════════════════════════════════════
+-->
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MJ — Today's Aphorism Editor</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --cream:    #faf6f0;
+    --coffee:   #6b4226;
+    --espresso: #3b1f0e;
+    --latte:    #c4956a;
+    --mist:     #e8ddd0;
+    --shadow:   rgba(59,31,14,.10);
+  }
+
+  body {
+    font-family: 'Lato', sans-serif;
+    background: #f0e9e0;
+    color: var(--espresso);
+    min-height: 100vh;
+    padding: 32px 16px 64px;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+
+  /* ── 헤더 ── */
+  .hd { text-align: center; margin-bottom: 32px; }
+  .hd-eyebrow { font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--latte); margin-bottom: 10px; }
+  .hd-title { font-family: 'Playfair Display', serif; font-size: 28px; font-weight: 600; line-height: 1.25; color: var(--espresso); margin-bottom: 14px; }
+  .hd-title em { font-weight: 400; color: var(--coffee); }
+  .hd-rule { width: 40px; height: 1px; background: var(--latte); margin: 0 auto 14px; }
+  .hd-desc { font-size: 13px; color: var(--latte); line-height: 1.6; }
+
+  /* ── 카드 ── */
+  .card { background: var(--cream); border-radius: 4px; box-shadow: 0 2px 14px var(--shadow); padding: 24px 24px 20px; margin-bottom: 16px; }
+  .card-title { font-family: 'Playfair Display', serif; font-size: 14px; font-weight: 600; color: var(--coffee); margin-bottom: 18px; padding-bottom: 10px; border-bottom: 1px solid var(--mist); }
+
+  /* ── Mode ── */
+  .mode-row { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+  .mode-btn { padding: 6px 18px; border-radius: 20px; border: 1px solid var(--mist); background: var(--cream); color: var(--latte); font-family: 'Lato', sans-serif; font-size: 12px; cursor: pointer; transition: all .2s; }
+  .mode-btn.active { background: var(--coffee); color: var(--cream); border-color: var(--coffee); }
+  .mode-desc { font-size: 11px; color: var(--latte); margin-top: 8px; line-height: 1.5; }
+
+  /* ── 입력 폼 ── */
+  .field { margin-bottom: 14px; }
+  .field-label { display: block; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--latte); margin-bottom: 6px; }
+  .field input, .field textarea { width: 100%; padding: 9px 12px; border: 1px solid var(--mist); border-radius: 3px; background: #fff; color: var(--espresso); font-family: 'Lato', sans-serif; font-size: 13px; outline: none; transition: border-color .2s; resize: vertical; }
+  .field input:focus, .field textarea:focus { border-color: var(--latte); }
+  .field-hint { font-size: 10.5px; color: var(--latte); margin-top: 5px; line-height: 1.5; }
+  .btn-add { width: 100%; padding: 11px; background: var(--coffee); color: var(--cream); border: none; border-radius: 3px; font-family: 'Playfair Display', serif; font-size: 13px; cursor: pointer; transition: opacity .2s; margin-top: 4px; }
+  .btn-add:hover { opacity: .85; }
+
+  /* ── 목록 ── */
+  .list-empty { text-align: center; padding: 24px 0; font-size: 13px; color: var(--latte); font-style: italic; }
+
+  /* 드래그 컨테이너 */
+  #list-wrap { min-height: 10px; }
+
+  .aph-item {
+    border: 1px solid var(--mist); border-radius: 3px;
+    background: #fff; position: relative;
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 12px 12px 10px; margin-bottom: 10px;
+    transition: box-shadow .15s, opacity .15s;
+    cursor: default;
+  }
+  .aph-item.manual-fixed { border-color: var(--latte); background: #fffaf5; }
+  .aph-item.drag-over { box-shadow: 0 0 0 2px var(--coffee); }
+  .aph-item.dragging { opacity: .45; }
+
+  /* 드래그 핸들 */
+  .drag-handle {
+    flex-shrink: 0; width: 18px; padding-top: 3px;
+    cursor: grab; color: var(--mist);
+    font-size: 16px; line-height: 1; user-select: none;
+    transition: color .15s;
+  }
+  .drag-handle:hover { color: var(--latte); }
+  .drag-handle:active { cursor: grabbing; }
+
+  /* 항목 내용 */
+  .aph-body { flex: 1; min-width: 0; }
+  .aph-badge { display: inline-block; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--cream); background: var(--latte); padding: 2px 7px; border-radius: 10px; margin-bottom: 6px; }
+  .aph-num { font-size: 10px; color: var(--latte); margin-bottom: 5px; letter-spacing: .06em; }
+  .aph-text { font-family: 'Playfair Display', serif; font-size: 13px; font-style: italic; color: var(--espresso); line-height: 1.65; margin-bottom: 5px; padding-left: 10px; border-left: 2px solid var(--latte); }
+  .aph-author { font-size: 11px; color: var(--latte); text-align: right; }
+
+  /* 액션 행 */
+  .aph-actions { display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .btn-sm { padding: 4px 12px; border-radius: 2px; font-family: 'Lato', sans-serif; font-size: 10.5px; cursor: pointer; transition: all .15s; border: 1px solid; }
+  .btn-edit { background: var(--cream); color: var(--coffee); border-color: var(--mist); }
+  .btn-edit:hover { border-color: var(--coffee); }
+  .btn-del { background: var(--cream); color: #b85c5c; border-color: var(--mist); }
+  .btn-del:hover { border-color: #b85c5c; }
+
+  /* 번호 이동 */
+  .move-row { display: flex; align-items: center; gap: 5px; }
+  .move-label { font-size: 10.5px; color: var(--latte); white-space: nowrap; }
+  .move-input { width: 44px; padding: 3px 6px; border: 1px solid var(--mist); border-radius: 2px; font-size: 11px; text-align: center; font-family: 'Lato', sans-serif; color: var(--espresso); background: #fff; outline: none; }
+  .move-input:focus { border-color: var(--latte); }
+  .btn-move { padding: 4px 10px; border-radius: 2px; background: var(--cream); color: var(--latte); border: 1px solid var(--mist); font-family: 'Lato', sans-serif; font-size: 10.5px; cursor: pointer; transition: all .15s; }
+  .btn-move:hover { border-color: var(--coffee); color: var(--coffee); }
+
+  /* ── JSON ── */
+  .code-box { position: relative; background: #f5f0eb; border: 1px solid var(--mist); border-radius: 3px; padding: 14px 44px 14px 14px; max-height: 260px; overflow-y: auto; }
+  .code-box code { display: block; font-family: 'Courier New', monospace; font-size: 11px; color: var(--espresso); white-space: pre; line-height: 1.6; }
+  .btn-copy { position: absolute; top: 10px; right: 10px; padding: 4px 10px; border-radius: 2px; border: 1px solid var(--mist); background: var(--cream); color: var(--latte); font-family: 'Lato', sans-serif; font-size: 10px; cursor: pointer; transition: all .15s; }
+  .btn-copy:hover { border-color: var(--coffee); color: var(--coffee); }
+
+  /* ── 하단 버튼 ── */
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+  .btn-action { flex: 1; min-width: 120px; padding: 11px 8px; border-radius: 3px; font-family: 'Lato', sans-serif; font-size: 12px; cursor: pointer; transition: all .2s; border: 1px solid; text-align: center; }
+  .btn-download { background: var(--coffee); color: var(--cream); border-color: var(--coffee); }
+  .btn-download:hover { opacity: .85; }
+  .btn-import-wrap { flex: 1; min-width: 120px; }
+  .btn-import-wrap input[type=file] { display: none; }
+  .btn-import { display: block; width: 100%; padding: 11px 8px; border-radius: 3px; font-family: 'Lato', sans-serif; font-size: 12px; cursor: pointer; transition: all .2s; border: 1px solid var(--mist); background: var(--cream); color: var(--coffee); text-align: center; }
+  .btn-import:hover { border-color: var(--coffee); }
+
+  /* ── 수정 모달 ── */
+  .modal-bg { display: none; position: fixed; inset: 0; background: rgba(59,31,14,.35); z-index: 999; align-items: center; justify-content: center; }
+  .modal-bg.open { display: flex; }
+  .modal { background: var(--cream); border-radius: 4px; padding: 24px; width: 92%; max-width: 480px; box-shadow: 0 8px 32px rgba(59,31,14,.2); }
+  .modal-title { font-family: 'Playfair Display', serif; font-size: 15px; color: var(--coffee); margin-bottom: 16px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .btn-modal-save { padding: 7px 20px; border-radius: 3px; background: var(--coffee); color: var(--cream); border: none; font-family: 'Lato', sans-serif; font-size: 12px; cursor: pointer; }
+  .btn-modal-cancel { padding: 7px 16px; border-radius: 3px; background: var(--cream); color: var(--latte); border: 1px solid var(--mist); font-family: 'Lato', sans-serif; font-size: 12px; cursor: pointer; }
+
+  /* ── 토스트 ── */
+  .toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); background: var(--espresso); color: var(--cream); padding: 9px 22px; border-radius: 20px; font-size: 12px; letter-spacing: .04em; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 9999; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hd">
+    <div class="hd-eyebrow">MJ Coffee Science</div>
+    <div class="hd-title">Today's Aphorism<br><em>Editor</em></div>
+    <div class="hd-rule"></div>
+    <div class="hd-desc">격언을 편집하고 JSON을 다운로드해<br>GitHub에 업로드하세요.</div>
+  </div>
+
+  <!-- Mode -->
+  <div class="card">
+    <div class="card-title">Display Mode</div>
+    <div class="mode-row">
+      <button class="mode-btn active" id="btn-auto" onclick="setMode('auto')">Auto</button>
+      <button class="mode-btn" id="btn-manual" onclick="setMode('manual')">Manual</button>
+    </div>
+    <div class="mode-desc" id="mode-desc">Auto: 날짜 기준으로 격언을 자동 순환합니다.</div>
+  </div>
+
+  <!-- 추가 -->
+  <div class="card">
+    <div class="card-title">Add Aphorism · 격언 추가</div>
+    <div class="field">
+      <label class="field-label">격언 · Text</label>
+      <textarea id="inp-text" rows="3" placeholder="격언 내용을 입력하세요."></textarea>
+    </div>
+    <div class="field">
+      <label class="field-label">출처 · Author</label>
+      <input type="text" id="inp-author" placeholder="작가명 또는 작자 미상">
+      <div class="field-hint">비워두면 출처 없이 격언만 표시됩니다.</div>
+    </div>
+    <button class="btn-add" onclick="addItem()">+ Add</button>
+  </div>
+
+  <!-- 목록 -->
+  <div class="card">
+    <div class="card-title">Aphorism List · 격언 목록
+      <span id="count-badge" style="font-size:11px;color:var(--latte);font-family:'Lato',sans-serif;font-weight:400;margin-left:8px;"></span>
+    </div>
+    <div id="list-wrap"></div>
+  </div>
+
+  <!-- JSON -->
+  <div class="card">
+    <div class="card-title">JSON Preview</div>
+    <div class="code-box">
+      <code id="json-preview"></code>
+      <button class="btn-copy" onclick="copyJson()">Copy</button>
+    </div>
+  </div>
+
+  <!-- Export/Import -->
+  <div class="card">
+    <div class="card-title">Export / Import</div>
+    <div class="btn-row">
+      <button class="btn-action btn-download" onclick="downloadJson()">⬇ Download JSON</button>
+      <div class="btn-import-wrap">
+        <label class="btn-import">
+          ⬆ Import JSON
+          <input type="file" id="import-file" accept=".json" onchange="importJson(event)">
+        </label>
+      </div>
+    </div>
+    <div style="margin-top:12px;font-size:11px;color:var(--latte);line-height:1.6;">
+      다운로드 후 <strong>GitHub MerciHanrim/mjcafe-data</strong> 저장소에<br>
+      <code style="font-size:10.5px;background:var(--mist);padding:1px 5px;border-radius:2px;">mj-aphorism.json</code>
+      파일을 덮어씌워 업로드하세요.
+    </div>
+  </div>
+
+</div>
+
+<!-- 수정 모달 -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <div class="modal-title">Edit Aphorism · 격언 수정</div>
+    <div class="field">
+      <label class="field-label">격언 · Text</label>
+      <textarea id="edit-text" rows="3"></textarea>
+    </div>
+    <div class="field">
+      <label class="field-label">출처 · Author</label>
+      <input type="text" id="edit-author">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-modal-save" onclick="saveEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ════════════════════════════════════════════════════════════
+   Today's Aphorism Editor
+   순서 변경: 드래그 앤 드롭 + 번호 직접 입력 두 가지 지원
+   데이터: localStorage 자동 저장
+   ════════════════════════════════════════════════════════════ */
+
+var LS_KEY  = 'mj-aphorism-editor';
+var data    = { mode: 'auto', list: [] };
+var editIdx = -1;
+
+/* 드래그 상태 변수 */
+var dragSrcIdx = -1;
+
+/* ── 초기화 ── */
+(function init() {
+  var saved = localStorage.getItem(LS_KEY);
+  if (saved) { try { data = JSON.parse(saved); } catch(e) {} }
+  renderMode();
+  renderList();
+  renderJson();
+})();
+
+/* ── 저장 ── */
+function save() {
+  localStorage.setItem(LS_KEY, JSON.stringify(data));
+  renderList();
+  renderJson();
+}
+
+/* ── Mode ── */
+function setMode(m) {
+  data.mode = m; renderMode(); save();
+}
+function renderMode() {
+  document.getElementById('btn-auto').classList.toggle('active', data.mode === 'auto');
+  document.getElementById('btn-manual').classList.toggle('active', data.mode === 'manual');
+  document.getElementById('mode-desc').textContent = data.mode === 'auto'
+    ? 'Auto: 날짜 기준으로 격언을 자동 순환합니다.'
+    : 'Manual: 목록의 첫 번째 항목이 항상 표시됩니다.';
+}
+
+/* ── 추가 ── */
+function addItem() {
+  var text   = document.getElementById('inp-text').value.trim();
+  var author = document.getElementById('inp-author').value.trim();
+  if (!text) { toast('격언 내용을 입력해주세요.'); return; }
+  data.list.push({ text: text, author: author });
+  document.getElementById('inp-text').value   = '';
+  document.getElementById('inp-author').value = '';
+  save();
+  toast('추가되었습니다.');
+}
+
+/* ── 삭제 ── */
+function delItem(idx) {
+  if (!confirm('이 격언을 삭제하시겠습니까?')) return;
+  data.list.splice(idx, 1);
+  save();
+  toast('삭제되었습니다.');
+}
+
+/* ── 번호 입력 이동 ── */
+function moveToNum(fromIdx) {
+  var inp = document.getElementById('move-inp-' + fromIdx);
+  var to  = parseInt(inp.value, 10) - 1; /* 1-based → 0-based */
+  if (isNaN(to) || to < 0 || to >= data.list.length || to === fromIdx) {
+    toast('올바른 번호를 입력해주세요. (1 ~ ' + data.list.length + ')');
+    return;
+  }
+  var item = data.list.splice(fromIdx, 1)[0];
+  data.list.splice(to, 0, item);
+  save();
+  toast((fromIdx + 1) + '번 → ' + (to + 1) + '번으로 이동했습니다.');
+}
+
+/* ── 목록 렌더 ── */
+function renderList() {
+  var wrap  = document.getElementById('list-wrap');
+  var badge = document.getElementById('count-badge');
+  badge.textContent = '(' + data.list.length + '개)';
+
+  if (!data.list.length) {
+    wrap.innerHTML = '<div class="list-empty">아직 격언이 없습니다.<br>위에서 추가해 주세요.</div>';
+    return;
+  }
+
+  wrap.innerHTML = data.list.map(function(item, i) {
+    var isFixed = data.mode === 'manual' && i === 0;
+    return '<div class="aph-item' + (isFixed ? ' manual-fixed' : '') + '" '
+      + 'draggable="true" data-idx="' + i + '" '
+      + 'id="aph-item-' + i + '">'
+
+      /* 드래그 핸들 */
+      + '<div class="drag-handle" title="드래그로 순서 변경">⠿</div>'
+
+      /* 본문 */
+      + '<div class="aph-body">'
+      + (isFixed ? '<span class="aph-badge">표시 중</span><br>' : '')
+      + '<div class="aph-num">' + String(i + 1).padStart(2, '0') + '</div>'
+      + '<div class="aph-text">' + esc(item.text) + '</div>'
+      + (item.author ? '<div class="aph-author">— ' + esc(item.author) + '</div>' : '')
+
+      /* 액션 */
+      + '<div class="aph-actions">'
+      + '<button class="btn-sm btn-edit" onclick="openEdit(' + i + ')">Edit</button>'
+      + '<button class="btn-sm btn-del" onclick="delItem(' + i + ')">Delete</button>'
+      /* 번호 입력 이동 */
+      + '<div class="move-row">'
+      + '<span class="move-label">→</span>'
+      + '<input class="move-input" id="move-inp-' + i + '" type="number" min="1" max="' + data.list.length + '" placeholder="#" '
+      + 'onkeydown="if(event.key===\'Enter\')moveToNum(' + i + ')">'
+      + '<button class="btn-move" onclick="moveToNum(' + i + ')">Move</button>'
+      + '</div>'
+      + '</div>'
+
+      + '</div>'
+      + '</div>';
+  }).join('');
+
+  /* 드래그 앤 드롭 이벤트 바인딩 */
+  bindDragEvents();
+}
+
+/* ── 드래그 앤 드롭 ── */
+function bindDragEvents() {
+  var items = document.querySelectorAll('.aph-item');
+  items.forEach(function(el) {
+    el.addEventListener('dragstart', onDragStart);
+    el.addEventListener('dragover',  onDragOver);
+    el.addEventListener('dragleave', onDragLeave);
+    el.addEventListener('drop',      onDrop);
+    el.addEventListener('dragend',   onDragEnd);
+  });
+}
+
+function onDragStart(e) {
+  dragSrcIdx = parseInt(this.dataset.idx, 10);
+  this.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', dragSrcIdx);
+}
+function onDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  this.classList.add('drag-over');
+}
+function onDragLeave() {
+  this.classList.remove('drag-over');
+}
+function onDrop(e) {
+  e.preventDefault();
+  this.classList.remove('drag-over');
+  var toIdx = parseInt(this.dataset.idx, 10);
+  if (dragSrcIdx === toIdx) return;
+  var item = data.list.splice(dragSrcIdx, 1)[0];
+  data.list.splice(toIdx, 0, item);
+  save();
+  toast((dragSrcIdx + 1) + '번 → ' + (toIdx + 1) + '번으로 이동했습니다.');
+}
+function onDragEnd() {
+  document.querySelectorAll('.aph-item').forEach(function(el) {
+    el.classList.remove('dragging', 'drag-over');
+  });
+  dragSrcIdx = -1;
+}
+
+/* ── 수정 모달 ── */
+function openEdit(idx) {
+  editIdx = idx;
+  document.getElementById('edit-text').value   = data.list[idx].text   || '';
+  document.getElementById('edit-author').value = data.list[idx].author || '';
+  document.getElementById('modal').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+  editIdx = -1;
+}
+function saveEdit() {
+  if (editIdx < 0) return;
+  var text   = document.getElementById('edit-text').value.trim();
+  var author = document.getElementById('edit-author').value.trim();
+  if (!text) { toast('격언 내용을 입력해주세요.'); return; }
+  data.list[editIdx] = { text: text, author: author };
+  closeModal();
+  save();
+  toast('수정되었습니다.');
+}
+
+/* ── JSON 렌더 ── */
+function renderJson() {
+  document.getElementById('json-preview').textContent = JSON.stringify(data, null, 2);
+}
+
+/* ── Copy JSON ── */
+function copyJson() {
+  navigator.clipboard.writeText(JSON.stringify(data, null, 2))
+    .then(function() { toast('JSON 복사됨!'); })
+    .catch(function() { toast('복사 실패 — 수동으로 선택해 주세요.'); });
+}
+
+/* ── Download JSON ── */
+function downloadJson() {
+  var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'mj-aphorism.json';
+  a.click();
+  toast('다운로드 완료!');
+}
+
+/* ── Import JSON ── */
+function importJson(e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      var imported = JSON.parse(ev.target.result);
+      if (!Array.isArray(imported.list)) throw new Error();
+      if (data.list.length && !confirm('현재 데이터에 덮어씌우시겠습니까?\n확인: 덮어씌우기  /  취소: 병합')) {
+        var texts = data.list.map(function(x) { return x.text; });
+        imported.list.forEach(function(item) {
+          if (texts.indexOf(item.text) === -1) data.list.push(item);
+        });
+      } else {
+        data = imported;
+      }
+      save(); renderMode();
+      toast('불러오기 완료!');
+    } catch(err) { toast('올바른 JSON 파일이 아닙니다.'); }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+/* ── 유틸 ── */
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function toast(msg) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(function() { el.classList.remove('show'); }, 2200);
+}
+
+/* 모달 배경 클릭 시 닫기 */
+document.getElementById('modal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+</script>
+</body>
+</html>
