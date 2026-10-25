@@ -1,13 +1,17 @@
 {
-  "mode": "manual",
+  "mode": "auto",
   "list": [
     {
-      "text": "No need to hurry.\nNo need to sparkle.\nNo need to be anybody but oneself.",
-      "author": "Virginia Woolf - A Room of One's Own (1929)"
+      "text": "Cetanāhaṁ, bhikkhave, kammaṁ vadāmi. Cetayitvā kammaṁ karoti—kāyena vācāya manasā.",
+      "author": "Anguttara Nikaya 6.63"
     },
     {
-      "text": "I don't want to not be important.",
-      "author": "Irving Azoff (Eagles Manager)"
+      "text": "The Definition of Kamma : Monks, it is intention that I call kamma. Having intended, one performs kamma through body, speech, and mind.",
+      "author": "The Buddha (AN 6.63)"
+    },
+    {
+      "text": "The Essence of Karma : Monks, it is intention that I call kamma. Having intended, one performs kamma through body, speech, and mind.",
+      "author": "The Buddha (AN 6.63)"
     }
   ]
 }
